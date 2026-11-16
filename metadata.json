@@ -1,0 +1,8 @@
+{
+  "name": "CXT - othman | منصة الفواتير الإلكترونية الذكية",
+  "description": "منصة CXT - othman لإنشاء وإدارة الفواتير الإلكترونية لمراكز التسوق والجمعيات ومحلات الهواتف وكافة الأنشطة التجارية مع التصدير PDF والمشاركة الفورية عبر واتساب ولوحة تحكم ذكية.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,243 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable Hardened Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'email', 'photoURL', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid == userId && isValidId(data.uid)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && data.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCustomFieldsList(listVal) {
+      return listVal is list
+        && listVal.size() <= 10
+        && (listVal.size() == 0 || (listVal[0] is map && listVal[0].keys().hasOnly(['id', 'label', 'value'])));
+    }
+
+    function isValidStoreSettings(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'storeName', 'businessType', 'currency',
+          'taxRate', 'accentColor', 'templateStyle', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'storeName', 'businessType', 'customBusinessLabel',
+          'logoDataUrl', 'phone', 'address', 'taxNumber', 'currency',
+          'taxRate', 'invoiceFooterNote', 'accentColor', 'templateStyle',
+          'invoiceFont', 'customFields', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == userId && isValidId(data.ownerId)
+        && data.storeName is string && data.storeName.size() >= 1 && data.storeName.size() <= 120
+        && data.businessType in ['mobile_shop', 'shopping_mall', 'cooperative', 'grocery', 'services', 'custom']
+        && (!('customBusinessLabel' in data) || (data.customBusinessLabel is string && data.customBusinessLabel.size() <= 120))
+        && (!('logoDataUrl' in data) || (
+          data.logoDataUrl is string
+          && data.logoDataUrl.size() <= 300000
+          && (data.logoDataUrl == '' || data.logoDataUrl.matches('^(/src/assets/|https://|data:image/(png|jpeg|jpg|webp);base64,).*'))
+        ))
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 40))
+        && (!('address' in data) || (data.address is string && data.address.size() <= 200))
+        && (!('taxNumber' in data) || (data.taxNumber is string && data.taxNumber.size() <= 60))
+        && data.currency is string && data.currency in ['IQD', 'USD', 'SAR', 'AED', 'KWD', 'EGP']
+        && data.taxRate is number && data.taxRate >= 0 && data.taxRate <= 100
+        && (!('invoiceFooterNote' in data) || (data.invoiceFooterNote is string && data.invoiceFooterNote.size() <= 300))
+        && data.accentColor is string && data.accentColor.matches('^#[0-9a-fA-F]{6}$')
+        && data.templateStyle in ['classic', 'modern', 'thermal', 'executive', 'minimal']
+        && (!('invoiceFont' in data) || data.invoiceFont in ['cairo', 'tajawal', 'amiri', 'ibm_plex'])
+        && (!('customFields' in data) || isValidCustomFieldsList(data.customFields))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidClient(data, userId) {
+      return data.keys().hasAll(['ownerId', 'name', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'name', 'phone', 'email', 'address', 'category', 'notes', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId && isValidId(data.ownerId)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 40))
+        && (!('email' in data) || (data.email is string && data.email.size() <= 160))
+        && (!('address' in data) || (data.address is string && data.address.size() <= 200))
+        && (!('category' in data) || (data.category is string && data.category.size() <= 60))
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 300))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInvoice(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'invoiceNumber', 'clientName', 'businessType', 'issueDate',
+          'status', 'currency', 'taxRate', 'discountAmount', 'subtotal',
+          'taxAmount', 'total', 'items', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'invoiceNumber', 'clientId', 'clientName', 'clientPhone',
+          'businessType', 'issueDate', 'dueDate', 'status', 'currency',
+          'taxRate', 'discountAmount', 'subtotal', 'taxAmount', 'total',
+          'notes', 'items', 'customFields', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == userId && isValidId(data.ownerId)
+        && data.invoiceNumber is string && data.invoiceNumber.size() >= 1 && data.invoiceNumber.size() <= 40
+        && (!('clientId' in data) || (data.clientId is string && data.clientId.size() <= 128))
+        && data.clientName is string && data.clientName.size() >= 1 && data.clientName.size() <= 120
+        && (!('clientPhone' in data) || (data.clientPhone is string && data.clientPhone.size() <= 40))
+        && data.businessType is string && data.businessType.size() >= 1 && data.businessType.size() <= 60
+        && data.issueDate is string && data.issueDate.size() >= 4 && data.issueDate.size() <= 40
+        && (!('dueDate' in data) || (data.dueDate is string && data.dueDate.size() <= 40))
+        && data.status in ['paid', 'pending', 'draft']
+        && data.currency is string && data.currency in ['IQD', 'USD', 'SAR', 'AED', 'KWD', 'EGP']
+        && data.taxRate is number && data.taxRate >= 0 && data.taxRate <= 100
+        && data.discountAmount is number && data.discountAmount >= 0 && data.discountAmount <= 1000000000000
+        && data.subtotal is number && data.subtotal >= 0 && data.subtotal <= 1000000000000
+        && data.taxAmount is number && data.taxAmount >= 0 && data.taxAmount <= 1000000000000
+        && data.total is number && data.total >= 0 && data.total <= 1000000000000
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 500))
+        && data.items is list && data.items.size() >= 1 && data.items.size() <= 50
+        && data.items[0] is map
+        && data.items[0].keys().hasAll(['id', 'name', 'quantity', 'unitPrice', 'discount'])
+        && data.items[0].keys().hasOnly(['id', 'name', 'sku', 'quantity', 'unitPrice', 'discount'])
+        && (!('customFields' in data) || isValidCustomFieldsList(data.customFields))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isVerifiedUser()
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isVerifiedUser()
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoURL', 'updatedAt']);
+      allow delete: if false;
+
+      match /settings/{settingId} {
+        allow get: if isValidId(userId) && isValidId(settingId) && isOwner(userId);
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(settingId)
+          && isVerifiedUser()
+          && isOwner(userId)
+          && isValidStoreSettings(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(settingId)
+          && isVerifiedUser()
+          && isOwner(userId)
+          && isValidStoreSettings(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'storeName', 'businessType', 'customBusinessLabel', 'logoDataUrl',
+            'phone', 'address', 'taxNumber', 'currency', 'taxRate',
+            'invoiceFooterNote', 'accentColor', 'templateStyle', 'invoiceFont',
+            'customFields', 'updatedAt'
+          ]);
+        allow delete: if isValidId(userId) && isValidId(settingId) && isVerifiedUser() && isOwner(userId);
+      }
+
+      match /clients/{clientId} {
+        allow get: if isValidId(userId) && isValidId(clientId) && isOwner(userId);
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(clientId)
+          && isVerifiedUser()
+          && isOwner(userId)
+          && isValidClient(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(clientId)
+          && isVerifiedUser()
+          && isOwner(userId)
+          && isValidClient(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'phone', 'email', 'address', 'category', 'notes', 'updatedAt'
+          ]);
+        allow delete: if isValidId(userId) && isValidId(clientId) && isVerifiedUser() && isOwner(userId);
+      }
+
+      match /invoices/{invoiceId} {
+        allow get: if isValidId(userId) && isValidId(invoiceId) && isOwner(userId);
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(invoiceId)
+          && isVerifiedUser()
+          && isOwner(userId)
+          && isValidInvoice(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(invoiceId)
+          && isVerifiedUser()
+          && isOwner(userId)
+          && isValidInvoice(incoming(), userId)
+          && existing().status != 'paid'
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            (incoming().status == 'paid' && incoming().diff(existing()).affectedKeys().hasOnly([
+              'invoiceNumber', 'clientId', 'clientName', 'clientPhone', 'businessType',
+              'issueDate', 'dueDate', 'status', 'currency', 'taxRate', 'discountAmount',
+              'subtotal', 'taxAmount', 'total', 'notes', 'items', 'customFields', 'updatedAt'
+            ]))
+            ||
+            (incoming().status in ['draft', 'pending'] && incoming().diff(existing()).affectedKeys().hasOnly([
+              'invoiceNumber', 'clientId', 'clientName', 'clientPhone', 'businessType',
+              'issueDate', 'dueDate', 'status', 'currency', 'taxRate', 'discountAmount',
+              'subtotal', 'taxAmount', 'total', 'notes', 'items', 'customFields', 'updatedAt'
+            ]))
+          );
+        allow delete: if isValidId(userId) && isValidId(invoiceId) && isVerifiedUser() && isOwner(userId);
+      }
+    }
+  }
+}
